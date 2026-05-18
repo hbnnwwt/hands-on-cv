@@ -82,6 +82,72 @@ def sobel_demo(image: np.ndarray) -> None:
     show_plot()
 
 
+def correct_rotation(image: np.ndarray) -> np.ndarray | None:
+    """通过轮廓方向角检测并校正图像旋转
+
+    原理：找到图像中最大轮廓，用 minAreaRect 获取其旋转角度，
+    再用仿射变换将图像旋转到正向。适用于答题卡等有明显外轮廓的文档。
+
+    假设纸张已处于正确朝向（竖版：h > w），仅修正小角度倾斜。
+    将 minAreaRect 的角度归一化到 [-45°, 45°) 后取反校正。
+
+    参数：
+        image: 输入图像（灰度或彩色）
+
+    返回：
+        校正后的图像，检测失败返回 None
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL,
+                                    cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < gray.shape[0] * gray.shape[1] * 0.1:
+        return None
+
+    rect = cv2.minAreaRect(largest)
+    (_, (w, h), angle) = rect
+
+    # 归一化角度到 [-45°, 45°)
+    # minAreaRect 可能返回 (w>h, angle≈0) 或 (w<h, angle≈-90)
+    # 两者描述的是同一个纸张，归一化后只保留倾斜分量
+    while angle > 45:
+        angle -= 90
+    while angle <= -45:
+        angle += 90
+
+    rotation = -angle
+
+    if abs(rotation) < 0.5:
+        return image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    (ih, iw) = image.shape[:2]
+    center = (iw // 2, ih // 2)
+    M = cv2.getRotationMatrix2D(center, rotation, 1.0)
+
+    cos_val = abs(M[0, 0])
+    sin_val = abs(M[0, 1])
+    new_w = int(ih * sin_val + iw * cos_val)
+    new_h = int(ih * cos_val + iw * sin_val)
+
+    M[0, 2] += (new_w - iw) / 2
+    M[1, 2] += (new_h - ih) / 2
+
+    rotated = cv2.warpAffine(image, M, (new_w, new_h),
+                              flags=cv2.INTER_CUBIC,
+                              borderMode=cv2.BORDER_REPLICATE)
+    print(f"旋转校正: {rotation:.1f}°, "
+          f"尺寸 {iw}x{ih} -> {new_w}x{new_h}")
+    return rotated
+
+
 def contour_analysis(image: np.ndarray) -> None:
     """演示轮廓分析"""
     if image.ndim == 3:
@@ -147,6 +213,22 @@ def main():
     sobel_demo(image)
     print("\n=== 轮廓分析 ===")
     contour_analysis(image)
+
+    # 旋转校正演示：用倾斜纸张图像
+    repo_root = Path(__file__).parent.parent
+    tilted_path = str(repo_root / "data" / "tilted_paper.png")
+    try:
+        tilted = read_image(tilted_path)
+        print("\n=== 旋转校正 ===")
+        corrected = correct_rotation(tilted)
+        if corrected is not None:
+            from common.utils import save_image
+            save_image(corrected, "outputs/rotation_corrected.png")
+            show_images(tilted, corrected,
+                        titles=["倾斜原图", "旋转校正后"],
+                        window_size=(12, 6))
+    except (FileNotFoundError, ValueError):
+        print(f"\n跳过旋转校正演示（未找到 {tilted_path}）")
 
 
 if __name__ == "__main__":

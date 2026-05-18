@@ -558,6 +558,12 @@ def main():
 
     Path("outputs").mkdir(exist_ok=True)
 
+    # 旋转校正：确保版面分析输入是正向的
+    from chapter07.canny_and_contours import correct_rotation
+    corrected = correct_rotation(image)
+    if corrected is not None:
+        image = corrected
+
     # 二值化
     _, binary = cv2.threshold(image, 0, 255,
                               cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
