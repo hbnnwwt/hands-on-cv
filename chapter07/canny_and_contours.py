@@ -197,7 +197,7 @@ def main():
         image_path = sys.argv[1]
     else:
         repo_root = Path(__file__).parent.parent
-        image_path = str(repo_root / "data" / "shapes.png")
+        image_path = str(repo_root / "data" / "answer_sheet" / "imgs" / "answer_sheet_1.png")
 
     try:
         image = read_image(image_path)
@@ -214,9 +214,9 @@ def main():
     print("\n=== 轮廓分析 ===")
     contour_analysis(image)
 
-    # 旋转校正演示：用倾斜纸张图像
+    # 旋转校正演示
     repo_root = Path(__file__).parent.parent
-    tilted_path = str(repo_root / "data" / "tilted_paper.png")
+    tilted_path = str(repo_root / "data" / "answer_sheet" / "imgs" / "answer_sheet_1.png")
     try:
         tilted = read_image(tilted_path)
         print("\n=== 旋转校正 ===")
@@ -225,7 +225,7 @@ def main():
             from common.utils import save_image
             save_image(corrected, "outputs/rotation_corrected.png")
             show_images(tilted, corrected,
-                        titles=["倾斜原图", "旋转校正后"],
+                        titles=["校正前", "旋转校正后"],
                         window_size=(12, 6))
     except (FileNotFoundError, ValueError):
         print(f"\n跳过旋转校正演示（未找到 {tilted_path}）")
