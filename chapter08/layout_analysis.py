@@ -273,157 +273,136 @@ def hough_lines_demo(binary: np.ndarray) -> np.ndarray:
 
 
 # ============================================================
-# §8.5 投影法版面区域检测
+# §8.5 形态学闭运算 + 轮廓检测的版面区域定位
 # ============================================================
 
-def detect_regions_by_projection(binary: np.ndarray,
-                                  min_gap_width: int = 35,
-                                  smooth_window: int = 40,
-                                  gap_threshold_ratio: float = 0.008
+def detect_regions_by_morphology(binary: np.ndarray,
+                                  min_area_ratio: float = 0.03,
+                                  max_area_ratio: float = 0.92,
+                                  kernel_ratio: float = 0.02
                                   ) -> List[dict]:
-    """通过水平投影空隙自动检测版面区域
+    """通过形态学闭运算检测答题卡的带边框区域
 
-    原理：对二值图做水平投影，大窗口平滑后找空隙（投影值极低的行），
-    空隙之间的连续内容块就是一个版面区域。
+    原理：答题卡的每个区域（学号、选择题等）都有矩形边框。
+    反转二值图后做闭运算，将边框与内部内容融合成大块连通区域，
+    再用轮廓检测定位。取面积最大的 2 个区域。
 
     参数：
         binary: 二值图（前景=255，背景=0，即 THRESH_BINARY_INV）
-        min_gap_width: 空隙最小宽度（像素），小于此值不视为分界
-        smooth_window: 投影平滑窗口大小
-        gap_threshold_ratio: 空隙判定阈值（相对于图像宽度的比例）
+        min_area_ratio: 最小面积占比（过滤噪声小区域）
+        max_area_ratio: 最大面积占比（过滤整页轮廓）
+        kernel_ratio: 闭运算核大小占图像高度的比例
     返回：
-        [{"label": "info", "y_start": int, "y_end": int, "mean_density": float}, ...]
+        [{"label": str, "bbox": (x, y, w, h)}, ...] 按y坐标排序
     """
     h, w = binary.shape
-    h_proj = np.sum(binary, axis=1) // 255
+    total_area = h * w
 
-    kernel = np.ones(smooth_window) / smooth_window
-    smoothed = np.convolve(h_proj, kernel, mode='same')
+    # 反转：边框和内容变白，背景变黑
+    inv = 255 - binary
 
-    threshold = w * gap_threshold_ratio
+    # 形态学闭运算：合并边框线与内部内容为一个连通区域
+    ksize = max(int(h * kernel_ratio), 5)
+    if ksize % 2 == 0:
+        ksize += 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (ksize, ksize))
+    closed = cv2.morphologyEx(inv, cv2.MORPH_CLOSE, kernel)
 
-    # 找空隙
-    gaps = []
-    in_gap = False
-    gap_start = 0
-    for y in range(h):
-        if smoothed[y] < threshold and not in_gap:
-            in_gap = True
-            gap_start = y
-        elif smoothed[y] >= threshold and in_gap:
-            in_gap = False
-            width = y - gap_start
-            if width >= min_gap_width:
-                gaps.append((gap_start, y))
-    if in_gap and h - gap_start >= min_gap_width:
-        gaps.append((gap_start, h))
+    # 轮廓检测
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL,
+                                    cv2.CHAIN_APPROX_SIMPLE)
 
-    # 空隙之间就是区域
-    boundaries = [0]
-    for gs, ge in gaps:
-        boundaries.extend([gs, ge])
-    boundaries.append(h)
+    min_area = total_area * min_area_ratio
+    max_area = total_area * max_area_ratio
+
+    boxes = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area or area > max_area:
+            continue
+        x, y, bw, bh = cv2.boundingRect(c)
+        aspect = bw / max(bh, 1)
+        if aspect < 0.3 or aspect > 5.0:
+            continue
+        boxes.append((x, y, bw, bh))
+
+    # 按面积降序取最大的2个，再按y坐标排序
+    boxes.sort(key=lambda b: b[2] * b[3], reverse=True)
+    boxes = boxes[:2]
+    boxes.sort(key=lambda b: b[1])
 
     regions = []
-    for i in range(0, len(boundaries) - 1, 2):
-        y_start = boundaries[i]
-        y_end = boundaries[i + 1] if i + 1 < len(boundaries) else h
-        height = y_end - y_start
-        if height < 30:
-            continue
-        mean_density = float(np.mean(smoothed[y_start:y_end]))
+    for i, (x, y, bw, bh) in enumerate(boxes):
         regions.append({
-            "label": f"region_{len(regions)}",
-            "y_start": y_start,
-            "y_end": y_end,
-            "height": height,
-            "mean_density": mean_density,
+            "label": f"region_{i}",
+            "bbox": (x, y, bw, bh),
+            "area": bw * bh,
+        })
+
+    return regions, closed
+
+
+def fallback_regions(h: int, w: int, page: int = 1) -> List[dict]:
+    """自动检测失败时使用固定比例的 fallback 区域
+
+    参考实际答题卡尺寸标定：Page1 学号区占 6%~26%，选择题区占 28%~80%；
+    Page2 判断题区占 6%~46%，简答题区占 50%~90%。
+
+    参数：
+        h: 图像高度
+        w: 图像宽度
+        page: 1 或 2
+    """
+    if page == 1:
+        configs = [
+            {"type": "student_id", "label": "学号区", "range": (0.06, 0.26)},
+            {"type": "choice",     "label": "选择题区", "range": (0.28, 0.80)},
+        ]
+    else:
+        configs = [
+            {"type": "judge", "label": "判断题区", "range": (0.06, 0.46)},
+            {"type": "essay", "label": "简答题区", "range": (0.50, 0.90)},
+        ]
+
+    regions = []
+    for cfg in configs:
+        y_start = int(h * cfg["range"][0])
+        y_end = int(h * cfg["range"][1])
+        regions.append({
+            "type": cfg["type"],
+            "label": cfg["label"],
+            "bbox": (0, y_start, w, y_end - y_start),
+            "area": w * (y_end - y_start),
         })
 
     return regions
 
 
-def classify_regions(regions: List[dict],
-                     image_height: int,
-                     page: int = 1) -> List[dict]:
-    """根据位置和特征对检测到的区域分类
+def classify_regions_morph(regions: List[dict], page: int = 1) -> List[dict]:
+    """为检测到的区域分配类型
 
-    策略：
-      - 过滤掉太小的区域（高度 < 图像高度的 3%）
-      - Page1: 第一个=信息区, 最大的=选择题区, 最后一个=学号填涂区
-      - Page2: 前半=判断题区, 后半=简答题区
-
-    参数：
-        regions: detect_regions_by_projection 的输出
-        image_height: 图像高度
-        page: 1 或 2
-    返回：
-        带有 "type" 和 "label" 字段的区域列表
+    Page1: 上方=学号区，下方=选择题区
+    Page2: 上方=判断题区，下方=简答题区
     """
     if not regions:
         return regions
 
-    # 过滤掉太小的区域（高度 < 图像高度的 3%）
-    filtered = [r for r in regions if r["height"] > image_height * 0.03]
-
-    if not filtered:
-        return regions
-
     if page == 1:
-        if len(filtered) >= 3:
-            for i, r in enumerate(filtered):
-                if i == 0:
-                    r["type"] = "info"
-                    r["label"] = "信息区"
-                elif i == len(filtered) - 1 and r["y_start"] > image_height * 0.6:
-                    r["type"] = "student_id"
-                    r["label"] = "学号填涂区"
-                else:
-                    r["type"] = "choice"
-                    r["label"] = "选择题区"
-            filtered = _merge_same_type(filtered)
-        elif len(filtered) == 2:
-            filtered[0]["type"] = "info"
-            filtered[0]["label"] = "信息区"
-            filtered[1]["type"] = "choice"
-            filtered[1]["label"] = "选择题区"
-        else:
-            filtered[0]["type"] = "choice"
-            filtered[0]["label"] = "选择题区"
+        types = ["student_id", "choice"]
+        labels = ["学号区", "选择题区"]
     else:
-        if len(filtered) >= 2:
-            mid = image_height * 0.45
-            for r in filtered:
-                if r["y_start"] < mid:
-                    r["type"] = "judge"
-                    r["label"] = "判断题区"
-                else:
-                    r["type"] = "essay"
-                    r["label"] = "简答题区"
-            # 合并同类型的连续区域
-            merged = _merge_same_type(filtered)
-            filtered = merged
+        types = ["judge", "essay"]
+        labels = ["判断题区", "简答题区"]
+
+    for i, r in enumerate(regions):
+        if i < len(types):
+            r["type"] = types[i]
+            r["label"] = labels[i]
         else:
-            filtered[0]["type"] = "judge"
-            filtered[0]["label"] = "判断题区"
+            r["type"] = "other"
+            r["label"] = f"其他区域{i}"
 
-    return filtered
-
-
-def _merge_same_type(regions: List[dict]) -> List[dict]:
-    """合并相邻的同类型区域"""
-    if len(regions) <= 1:
-        return regions
-    merged = [regions[0].copy()]
-    for r in regions[1:]:
-        if r["type"] == merged[-1]["type"]:
-            merged[-1]["y_end"] = r["y_end"]
-            merged[-1]["height"] = r["y_end"] - merged[-1]["y_start"]
-            merged[-1]["mean_density"] = (
-                merged[-1]["mean_density"] + r["mean_density"]) / 2
-        else:
-            merged.append(r.copy())
-    return merged
+    return regions
 
 
 def draw_regions(image: np.ndarray, regions: List[dict]) -> np.ndarray:
@@ -433,20 +412,17 @@ def draw_regions(image: np.ndarray, regions: List[dict]) -> np.ndarray:
         vis = cv2.cvtColor(vis, cv2.COLOR_GRAY2BGR)
 
     colors = {
-        "info": (255, 178, 102),
-        "choice": (102, 178, 255),
-        "student_id": (178, 102, 255),
-        "judge": (102, 255, 178),
-        "essay": (255, 102, 178),
+        "student_id": (0, 200, 0),
+        "choice": (255, 100, 0),
+        "judge": (0, 150, 255),
+        "essay": (200, 0, 200),
     }
 
-    h, w = vis.shape[:2]
     for r in regions:
-        y1, y2 = r["y_start"], r["y_end"]
-        color = colors.get(r.get("type", ""), (0, 255, 0))
-        cv2.rectangle(vis, (10, y1), (w - 10, y2), color, 3)
-        label = f"{r['label']} (h={r['height']})"
-        cv2.putText(vis, label, (20, y1 + 30),
+        x, y, bw, bh = r["bbox"]
+        color = colors.get(r.get("type", ""), (200, 200, 200))
+        cv2.rectangle(vis, (x, y), (x + bw, y + bh), color, 3)
+        cv2.putText(vis, r["label"], (x + 5, y + 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
     return vis
@@ -765,18 +741,24 @@ def main():
                 titles=["校正前", "校正后", "霍夫直线"],
                 window_size=(15, 5))
 
-    print("\n=== §8.5 投影法版面区域检测 ===")
+    print("\n=== §8.5 形态学闭运算 + 轮廓检测 ===")
     # 第一页：自动检测区域
-    raw_regions_p1 = detect_regions_by_projection(binary)
-    regions_p1 = classify_regions(raw_regions_p1, image.shape[0], page=1)
+    raw_regions_p1, morph_p1 = detect_regions_by_morphology(binary)
+    if len(raw_regions_p1) >= 2:
+        regions_p1 = classify_regions_morph(raw_regions_p1, page=1)
+        print("第一页：轮廓检测成功")
+    else:
+        regions_p1 = fallback_regions(image.shape[0], image.shape[1], page=1)
+        print("第一页：轮廓检测失败，使用固定比例 fallback")
     print(f"第一页检测到 {len(regions_p1)} 个区域：")
     for r in regions_p1:
-        print(f"  {r['label']}: y={r['y_start']}~{r['y_end']}, "
-              f"高度={r['height']}, 密度={r['mean_density']:.0f}")
+        x, y, bw, bh = r["bbox"]
+        print(f"  {r['label']}: ({x},{y}) {bw}x{bh}")
 
     vis_regions_p1 = draw_regions(image, regions_p1)
     cv2.imwrite("outputs/layout_regions_p1.png", vis_regions_p1)
-    print("已保存: outputs/layout_regions_p1.png")
+    cv2.imwrite("outputs/morph_p1.png", morph_p1)
+    print("已保存: outputs/layout_regions_p1.png, outputs/morph_p1.png")
 
     # 第二页
     repo_root = Path(__file__).parent.parent
@@ -793,16 +775,22 @@ def main():
         _, binary_p2 = cv2.threshold(page2_image, 0, 255,
                                      cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
 
-        raw_regions_p2 = detect_regions_by_projection(binary_p2)
-        regions_p2 = classify_regions(raw_regions_p2, page2_image.shape[0], page=2)
+        raw_regions_p2, morph_p2 = detect_regions_by_morphology(binary_p2)
+        if len(raw_regions_p2) >= 2:
+            regions_p2 = classify_regions_morph(raw_regions_p2, page=2)
+            print("\n第二页：轮廓检测成功")
+        else:
+            regions_p2 = fallback_regions(page2_image.shape[0], page2_image.shape[1], page=2)
+            print("\n第二页：轮廓检测失败，使用固定比例 fallback")
         print(f"\n第二页检测到 {len(regions_p2)} 个区域：")
         for r in regions_p2:
-            print(f"  {r['label']}: y={r['y_start']}~{r['y_end']}, "
-                  f"高度={r['height']}, 密度={r['mean_density']:.0f}")
+            x, y, bw, bh = r["bbox"]
+            print(f"  {r['label']}: ({x},{y}) {bw}x{bh}")
 
         vis_regions_p2 = draw_regions(page2_image, regions_p2)
         cv2.imwrite("outputs/layout_regions_p2.png", vis_regions_p2)
-        print("已保存: outputs/layout_regions_p2.png")
+        cv2.imwrite("outputs/morph_p2.png", morph_p2)
+        print("已保存: outputs/layout_regions_p2.png, outputs/morph_p2.png")
 
         show_images(image, vis_regions_p1, page2_image, vis_regions_p2,
                     titles=["第一页", "第一页区域", "第二页", "第二页区域"],
