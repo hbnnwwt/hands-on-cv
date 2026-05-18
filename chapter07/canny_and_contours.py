@@ -126,7 +126,7 @@ def correct_rotation(image: np.ndarray) -> np.ndarray | None:
     rotation = angle
 
     if abs(rotation) < 0.5:
-        return image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        return image.copy()
 
     (ih, iw) = image.shape[:2]
     center = (iw // 2, ih // 2)
