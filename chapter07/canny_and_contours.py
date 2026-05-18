@@ -123,7 +123,7 @@ def correct_rotation(image: np.ndarray) -> np.ndarray | None:
     while angle <= -45:
         angle += 90
 
-    rotation = -angle
+    rotation = angle
 
     if abs(rotation) < 0.5:
         return image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
