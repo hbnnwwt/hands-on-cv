@@ -559,6 +559,7 @@ def main():
     Path("outputs").mkdir(exist_ok=True)
 
     # 旋转校正：确保版面分析输入是正向的
+    original = image.copy()
     from chapter07.canny_and_contours import correct_rotation
     corrected = correct_rotation(image)
     if corrected is not None:
@@ -580,8 +581,8 @@ def main():
     hough_vis = hough_lines_demo(image)
 
     # 可视化连通域 + 霍夫直线对比
-    show_images(image, vis, hough_vis,
-                titles=["原图", "连通域筛选", "霍夫直线"],
+    show_images(original, image, hough_vis,
+                titles=["校正前", "校正后", "霍夫直线"],
                 window_size=(15, 5))
 
     print("\n=== §8.5 网格划分 ===")
