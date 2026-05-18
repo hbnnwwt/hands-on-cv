@@ -1,0 +1,51 @@
+# 教材配套代码 — 依赖清单
+
+# ============ 核心依赖 ============
+numpy>=1.24.0
+opencv-python>=4.9.0
+Pillow>=10.0.0
+matplotlib>=3.7.0
+PyYAML>=6.0
+scipy>=1.11.0
+
+# ============ 深度学习（第11-16章） ============
+# 注意：CPU/GPU版本根据需要选择
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ============ OCR与文字识别（第13-14章） ============
+paddleocr>=2.7.0
+paddlepaddle>=2.6.0
+transformers>=4.30.0   # TrOCR
+
+# ============ 检测与分割（第15章） ============
+ultralytics>=8.0.0     # YOLOv8
+
+# ============ 生成模型与大模型（第16章） ============
+# 这些较大，按需安装
+# diffusers>=0.20.0
+# accelerate>=0.20.0
+# clip-by-openai      # 用 git+https 安装
+
+# ============ I/O与数据处理 ============
+pandas>=2.0.0
+openpyxl>=3.1.0
+tqdm>=4.65.0
+
+# ============ 配置与验证 ============
+pydantic>=2.0.0
+
+# ============ 部署相关（第17-18章） ============
+flask>=2.3.0           # Web服务
+gunicorn>=21.0.0       # 生产WSGI（仅Linux）
+onnx>=1.14.0
+onnxruntime>=1.16.0
+pyinstaller>=5.13.0    # 打包
+
+# ============ 测试与开发（可选） ============
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+mypy>=1.5.0
+line_profiler>=4.1.0
+memory_profiler>=0.61.0

@@ -1,0 +1,13 @@
+第13章 文字检测与识别OCR — AI Prompt 注意事项
+========================================
+
+【AI 警示】（§13.5 PaddleOCR实战）
+当你用AI工具生成OCR相关代码时，注意以下常见"幻觉"：
+
+1. 模型名称幻觉：AI可能编造不存在的模型名称，如 PP-OCRv5（目前最新是v4）。请以PaddleOCR官方文档为准。
+2. API参数幻觉：AI可能编造不存在的参数，如 accuracy_mode='high'。使用前务必查阅官方API文档。
+3. 性能幻觉：AI可能声称某模型在中文手写体上达到99%准确率——这是不现实的。手写体OCR的准确率高度依赖数据质量和字体复杂度。
+
+验证方法：在PaddleOCR的GitHub仓库（github.com/PaddlePaddle/PaddleOCR）查阅最新文档和release notes。
+
+---

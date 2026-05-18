@@ -1,0 +1,39 @@
+第18章 系统测试、优化与部署 — AI Prompt 注意事项
+========================================================
+
+【避坑指南】（§18.5 性能剖析）
+
+@profile 装饰器命名冲突：
+`line_profiler` 和 `memory_profiler` 都通过注入全局 `@profile` 装饰器工作，二者不能同时启用。运行 `line_profiler` 时用 `kernprof -l -v script.py`，运行 `memory_profiler` 时用 `python -m memory_profiler script.py`。切换时移除装饰器或用以下 `noop_decorator` 替换：
+
+```python
+# 不使用任何profiler时，提供一个空装饰器避免 NameError
+try:
+    profile
+except NameError:
+    def profile(func):
+        return func
+```
+
+---
+
+【AI 协作小结】（§18.5 性能优化）
+
+性能优化是个反直觉的领域。让 AI 帮你**生成 profile 代码**和**实现优化方案**，但**优化决策必须基于实际数据**——不要让 AI 凭感觉建议"用multiprocessing就快了"。
+
+关键原则：
+- 先 profile，再优化（不要猜测瓶颈在哪）
+- 让 AI 帮你写 profile 包装代码和 benchmark 脚本
+- AI 建议的优化方案（如用多进程、用缓存）需要用实际数据验证效果
+- Amdahl 定律：优化只占 20% 运行时间的部分，即使加速 10 倍，总加速也只有 1.22 倍
+
+---
+
+【AI 协作习题】（§18 思考题第8题 — 终极挑战）
+
+用本课程学到的所有方法，让 AI 帮你为智能阅卷系统设计一份**完整的运维手册**——从安装、使用、常见问题到升级、灾备。记录你的 Prompt 和 AI 的输出，整理为最终的文档。
+
+提示：这是全书最后一道 AI 协作题，考察的是 Prompt 工程的综合运用能力。需要你：
+1. 用 RTF 框架明确角色（运维文档专家）、任务（生成运维手册）、格式（分章节的Markdown文档）
+2. 在 Prompt 中提供系统架构上下文（Pipeline结构、依赖列表、部署方式）
+3. 审查 AI 输出中的技术准确性（AI 可能编造不存在的配置项或命令）

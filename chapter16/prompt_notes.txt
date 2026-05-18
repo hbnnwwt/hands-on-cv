@@ -1,0 +1,12 @@
+第16章 生成式模型与视觉大模型 — AI Prompt 注意事项
+========================================
+
+【AI 警示】（§16.3.3 扩散模型）
+当你让 AI 帮你实现扩散模型代码时，务必检查 alpha、alpha_bar（累积乘积）和 beta 三者的关系。AI 生成的代码经常搞混这三个量的定义——有的实现中 alpha = 1 - beta，有的直接用 alpha = beta；有的用 alpha_bar = cumprod(alpha)，有的用 alpha_bar = cumprod(1 - beta)。如果定义不一致，前向加噪和反向去噪就不匹配，生成的图像全是噪声。另一个致命错误是加噪方向搞反：前向过程应该是 x_t = sqrt(alpha_bar_t) * x_0 + sqrt(1 - alpha_bar_t) * epsilon，但 AI 有时会写成 x_t = sqrt(1 - alpha_bar_t) * x_0 + sqrt(alpha_bar_t) * epsilon，把信号和噪声的权重颠倒了。
+
+---
+
+【Prompt 设计】（思考题第9题）
+设计一个 Prompt，让 AI 助手帮你用 Stable Diffusion 生成"不同填涂密度梯度"的答题卡气泡样本图像，用于 OMR 训练数据增强。Prompt 需明确：(a) 正向提示词和负向提示词的构造策略，(b) 控制参数（inference_steps、guidance_scale）的选择依据，(c) 生成后的质量验收标准（如何判断生成的气泡是否逼真）。讨论 AI 生成的样本可能引入哪些分布偏差。
+
+---

@@ -1,0 +1,12 @@
+第11章 深度学习基础 — AI Prompt 注意事项
+========================================
+
+【AI 警示】（§11.5 损失函数）
+当你让 AI 帮你写训练代码时，务必检查损失函数与输出层的配对关系。这是 AI 最容易犯错的地方之一：torch.nn.CrossEntropyLoss 期望输入是未归一化的 logits（内部会自动做 Softmax），而 torch.nn.NLLLoss 期望输入是 log-probabilities（需要你先手动做 F.log_softmax）。AI 生成的代码常把这俩搞混——把 Softmax 的输出直接丢给 CrossEntropyLoss（等于做了两次 Softmax），或把原始 logits 丢给 NLLLoss（等于没做 Softmax）。后果是训练不收敛或精度大幅下降。另一个常见错误是忘记 reduction 参数：多分类时应该用 reduction='mean'，但某些 AI 代码会用 reduction='sum'，导致学习率需要手动缩放。
+
+---
+
+【Prompt 设计题】（习题第8题）
+如果你想用 AI 编程助手帮你实现一个支持 Dropout 的 MLP，你会怎样写 Prompt？请写出一个完整的 Prompt，要求包含：网络结构、Dropout 率、损失函数、优化器配置。
+
+---
