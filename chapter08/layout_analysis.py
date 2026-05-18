@@ -613,6 +613,9 @@ def main():
         page2_image = None
 
     if page2_image is not None:
+        page2_corrected = correct_rotation(page2_image)
+        if page2_corrected is not None:
+            page2_image = page2_corrected
         regions_p2 = analyzer.analyze_page2(page2_image)
         print(f"第二页识别出 {len(regions_p2)} 个区域（判断题+简答题）")
         save_layout(regions_p2, "outputs/layout_page2.json")
